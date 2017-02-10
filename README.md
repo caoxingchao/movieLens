@@ -1,7 +1,10 @@
 # movieLens
-基于MovieLens数据集的电影推荐系统
+基于 Spark MLlib 模块的电影推荐系统
 
 ## data [数据说明](http://files.grouplens.org/datasets/movielens/ml-latest-small-README.html)
+
+MovieLens数据集
+
 （1）ratings.csv
 
 数据格式：userId,movieId,rating,timestamp
