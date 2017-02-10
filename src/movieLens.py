@@ -56,11 +56,11 @@ def recommend_for_all(model, movies, result_path, file_out_flag=False):
 
     b_movies = spark.sparkContext.broadcast(dict((int(l[0]), l[1]) for l in movies.collect()))
     products_for_all_users = model.recommendProductsForUsers(10).map(parse_recommendations).toDF()
-    products_for_all_users.repartition(1).orderBy(products_for_all_users.user).rdd \
-        .map(lambda l: Row(str(l.user), str(list((r[0], r[1]) for r in l.recommendations))))\
+    recommendation_result = products_for_all_users.repartition(1).orderBy(products_for_all_users.user).rdd \
+        .map(lambda l: Row(str(l.user) + "," + str(list((r[0], r[1]) for r in l.recommendations))))\
         .toDF().repartition(1)
-    if file_out_flag: # 输出到文件
-        products_for_all_users.write.csv(result_path)
+    if file_out_flag:  # 输出到文件
+        recommendation_result.write.text(result_path)
 
 
 def recommend_for_users(model, movies, user_ids):
@@ -109,7 +109,7 @@ def main(spark, data_path, result_path):
     recommend_for_users(model, movies, user_ids)
 
     # 为所有的用户作出推荐并输出到文件
-    file_out_flag = False
+    file_out_flag = True
     recommend_for_all(model, movies, result_path, file_out_flag)
 
 
