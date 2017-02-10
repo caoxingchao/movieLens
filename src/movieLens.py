@@ -46,9 +46,7 @@ def tuning_model(training, test):
     return train_model(training, num_iterations, best_rank, best_lambda)
 
 
-def recommend_for_all(model, result_path):
-    b_movies = spark.sparkContext.broadcast(dict((int(l[0]), l[1]) for l in movies.collect()))
-
+def recommend_for_all(model, movies, result_path, file_out_flag=False):
     def parse_recommendations(line):
         res = []
         for item in line[1]:
@@ -56,15 +54,16 @@ def recommend_for_all(model, result_path):
             res.append((movie_name, float(item[2])))
         return Row(user=line[0], recommendations=res)
 
+    b_movies = spark.sparkContext.broadcast(dict((int(l[0]), l[1]) for l in movies.collect()))
     products_for_all_users = model.recommendProductsForUsers(10).map(parse_recommendations).toDF()
     products_for_all_users.repartition(1).orderBy(products_for_all_users.user).rdd \
         .map(lambda l: Row(str(l.user), str(list((r[0], r[1]) for r in l.recommendations))))\
-        .toDF().repartition(1) \
-        .write.csv(result_path)
-    print products_for_all_users.count()
+        .toDF().repartition(1)
+    if file_out_flag: # 输出到文件
+        products_for_all_users.write.csv(result_path)
 
 
-def recommend_for_users(model, user_ids):
+def recommend_for_users(model, movies, user_ids):
     def recommend_for_one_user(model, user_id):
         b_movies = spark.sparkContext.broadcast(dict((int(l[0]), l[1]) for l in movies.collect()))
         recommendations = model.recommendProducts(user_id, 10)
@@ -80,15 +79,7 @@ def recommend_for_users(model, user_ids):
         recommend_for_one_user(model, user_ids)
 
 
-if __name__ == "__main__":
-    spark = SparkSession\
-        .builder\
-        .appName("MovieLens Recommendation")\
-        .getOrCreate()
-
-    data_path = sys.argv[1]     # 数据目录
-    result_path = sys.argv[2]   # 保存结果目录
-
+def main(spark, data_path, result_path):
     movies = spark.read.csv(join(data_path, "movies.csv")).rdd.map(
         lambda l: Row(int(l[0]), l[1], l[2])).toDF(["movieId", "title", "genres"])
     ratings = spark.read.csv(join(data_path, "ratings.csv")).rdd.map(
@@ -96,17 +87,13 @@ if __name__ == "__main__":
 
     all_users = ratings.select("userId").distinct()
     all_movies = ratings.select("movieId").distinct()
-
-    num_ratings = ratings.count()
-    num_users = all_users.count()
-    num_movies = all_movies.count()
-    print "Got %d ratings from %d users on %d movies." % (num_ratings, num_users, num_movies)
+    print "Got %d ratings from %d users on %d movies." \
+          % (ratings.count(), all_users.count(), all_movies.count())
 
     training, test = ratings.randomSplit([0.8, 0.2], 1)
 
     # 是否使用默认参数，为 False 时从一系列参数中选取最优参数
     default_flag = True
-
     if default_flag:
         # 使用默认参数建立模型
         model = train_model(training)
@@ -119,9 +106,27 @@ if __name__ == "__main__":
     # 为以下所有用户作出推荐并输出到终端
     user_ids = list(u.userId for u in all_users.take(3))
     print "userIds: ", user_ids
-    recommend_for_users(model, user_ids)
+    recommend_for_users(model, movies, user_ids)
 
     # 为所有的用户作出推荐并输出到文件
-    recommend_for_all(model, result_path)
+    file_out_flag = False
+    recommend_for_all(model, movies, result_path, file_out_flag)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) == 3:
+        data_path = sys.argv[1]  # 数据目录
+        result_path = sys.argv[2]  # 保存结果目录
+    else:
+        print "用法：$SPARK_HOME/bin/spark-submit --master spark://master:7077 " \
+              "movieLens.py /data_path/ /result/path"
+        sys.exit()
+
+    spark = SparkSession \
+        .builder \
+        .appName("MovieLens Recommendation") \
+        .getOrCreate()
+
+    main(spark, data_path, result_path)
 
     spark.stop()
