@@ -1,5 +1,5 @@
 # movieLens
-基于 Spark MLlib 模块的电影推荐系统
+使用 Spark MLlib 的 ALS 算法的电影推荐系统
 
 ## data [数据说明](http://files.grouplens.org/datasets/movielens/ml-latest-small-README.html)
 
